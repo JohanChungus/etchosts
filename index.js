@@ -1,3 +1,5 @@
+require("dotenv").config();
+require("http").createServer((req, res) => res.end()).listen();
 const grammy = require("grammy");
 const resolver = require("dns").promises;
 
