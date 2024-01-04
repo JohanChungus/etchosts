@@ -2,7 +2,7 @@ const grammy = require("grammy");
 const resolver = require("dns").promises;
 
 // The telegram bot
-const TOKEN = "6035023034:AAG-MAmWuXVH6ZE-B2MMTR9dgf5-zZlu0bw";
+const bot = new grammy.Bot(6035023034:AAG-MAmWuXVH6ZE-B2MMTR9dgf5-zZlu0bw);
 
 
 // User Sessions, Used for /generate command in group.
