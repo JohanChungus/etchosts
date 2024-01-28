@@ -17,24 +17,18 @@ async function generate(hostnames) {
   let hosts = {};
   let text = [];
 
-  for (i in hostnames) {
-    // Grab the Hostname, even in URL.
-    host = /(?:https?:\/\/)?([\w\d\.\-]+)/.exec(hostnames[i].toLowerCase())[1];
+  for (const hostname of hostnames) {
+    const host = /(?:https?:\/\/)?([\w\d\.\-]+)/.exec(hostname.toLowerCase())[1];
 
-    // Ignore onion address since it's unsupported here
     if (host.endsWith(".onion")) continue;
 
-    // Skip existing hostname
     if (hosts[host]) continue;
 
-    // Look up IP address of {host} string.
-    // Returns Array with a bunch of IP addresses of a single hostname
     hosts[host] = (await resolver.lookup(host, { all: true })).map((ip) => ip.address);
   }
 
-  // Parse hosts
-  for (host in hosts) {
-    let ips = hosts[host];
+  for (const host in hosts) {
+    const ips = hosts[host];
 
     ips.forEach((ip) => {
       text.push(`<pre>${ip}\t${host}</pre>`);
@@ -44,10 +38,8 @@ async function generate(hostnames) {
   return text.join("\n");
 }
 
-// Express route
 app.get("/", (req, res) => res.send("Hello, World!"));
 
-// Telegram commands
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
   bot.sendMessage(
@@ -68,46 +60,32 @@ bot.onText(/\/about/, (msg) => {
   );
 });
 
-bot.on("message:text", async (ctx) => {
+bot.on("message", async (msg) => {
   if (
-    ctx.message.chat.type !== "private" &&
-    ctx.message.reply_to_message &&
-    sess.get(ctx.message.from.id) != ctx.message.reply_to_message.message_id
+    msg.chat.type !== "private" &&
+    msg.reply_to_message &&
+    sess.get(msg.from.id) != msg.reply_to_message.message_id
   )
     return;
   try {
-    let hosts = await generate(ctx.message.text.split(" "));
-    let textMsg = `<b>${hosts}</b>`;
+    const hosts = await generate(msg.text.split(" "));
+    const textMsg = `<b>${hosts}</b>`;
 
-    // Sent as a file if the string length is at the maximum length.
     if (textMsg.length > 4096)
-      return ctx.replyWithDocument(
-        new TelegramBot.InputFile.Buffer.from(hosts), "hosts"),
-        { reply_to_message_id: ctx.message.message_id }
-      );
+      return bot.sendDocument(msg.chat.id, Buffer.from(hosts), { reply_to_message_id: msg.message_id });
 
-    // Sent as a text message whenever it's possible.
-    ctx.reply(textMsg, {
-      parse_mode: "HTML",
-      reply_to_message_id: ctx.message.message_id,
-    });
+    bot.sendMessage(msg.chat.id, textMsg, { parse_mode: "HTML", reply_to_message_id: msg.message_id });
   } catch (error) {
-    // Handle errors silently without sending them as a reply
     console.error(error);
   }
 
-  // Delete the session when available.
-  sess.delete(ctx.message.from.id);
+  sess.delete(msg.from.id);
 });
 
-bot.catch(console.error);
-bot.start();
+bot.on("polling_error", (error) => console.error(error));
 
-bot.api.getMe().then(({ first_name }) => console.log(`Logged as ${first_name}!`));
+bot.getMe().then(({ username }) => console.log(`Logged in as @${username}`));
 
-process.on("unhandledRejection", console.error);
-
-// Start the Express server
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
