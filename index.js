@@ -1,6 +1,6 @@
 require("dotenv").config();
 const express = require("express");
-const grammy = require("grammy");
+const TelegramBot = require("node-telegram-bot-api");
 const resolver = require("dns").promises;
 
 const app = express();
@@ -8,7 +8,7 @@ const PORT = process.env.PORT || 3000;
 
 // The telegram bot
 const TOKEN = "6035023034:AAG-MAmWuXVH6ZE-B2MMTR9dgf5-zZlu0bw";
-const bot = new grammy.Bot(TOKEN);
+const bot = new TelegramBot(TOKEN, { polling: true });
 const sess = new Map();
 
 resolver.setServers(["8.8.8.8"]);
@@ -44,23 +44,29 @@ async function generate(hostnames) {
   return text.join("\n");
 }
 
+// Express route
 app.get("/", (req, res) => res.send("Hello, World!"));
 
-bot.command("start", (ctx) =>
-  ctx.reply(
+// Telegram commands
+bot.onText(/\/start/, (msg) => {
+  const chatId = msg.chat.id;
+  bot.sendMessage(
+    chatId,
     "<pre><b>🙋‍♂️Hi! I can get IP from websites</b></pre>\n" +
       "To get IP from a website, just send me the link or domains, each separated by space.\n Hosting and modified by <b><a href='https://t.me/vano_ganzzz'><pre>🅅🄰🄽🄾 🄶🄰🄽🅉🅉🅉</pre></a></b>",
-    { reply_to_message_id: ctx.message.message_id, reply_markup: { force_reply: true, selective: true }, parse_mode: "HTML" }
-  )
-);
+    { reply_to_message_id: msg.message_id, reply_markup: { force_reply: true, selective: true }, parse_mode: "HTML" }
+  );
+});
 
-bot.command("about", (ctx) =>
-  ctx.reply(
+bot.onText(/\/about/, (msg) => {
+  const chatId = msg.chat.id;
+  bot.sendMessage(
+    chatId,
     "Hosting and modified by <b><a href='https://t.me/vano_ganzzz'>🅅🄰🄽🄾 🄶🄰🄽🅉🅉🅉</a></b>\n" +
       "Credit: <b>Yonle</b>",
-    { reply_to_message_id: ctx.message.message_id, reply_markup: { force_reply: true, selective: true }, parse_mode: "HTML" }
-  )
-);
+    { reply_to_message_id: msg.message_id, reply_markup: { force_reply: true, selective: true }, parse_mode: "HTML" }
+  );
+});
 
 bot.on("message:text", async (ctx) => {
   if (
@@ -76,7 +82,7 @@ bot.on("message:text", async (ctx) => {
     // Sent as a file if the string length is at the maximum length.
     if (textMsg.length > 4096)
       return ctx.replyWithDocument(
-        new grammy.InputFile(Buffer.from(hosts), "hosts"),
+        new TelegramBot.InputFile.Buffer.from(hosts), "hosts"),
         { reply_to_message_id: ctx.message.message_id }
       );
 
