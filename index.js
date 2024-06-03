@@ -1,41 +1,40 @@
 import { serve } from "https://deno.land/std@0.180.0/http/server.ts";
 import { config } from "https://deno.land/std@0.180.0/dotenv/mod.ts";
 import { resolve } from "https://deno.land/std@0.180.0/net/dns.ts";
-import { Bot } from "https://deno.land/x/telegram_bot_api@v0.5.3/mod.ts";
+import { Bot } from "https://deno.land/x/grammy@v1.11.0/mod.ts";
 
-// Konfigurasi Bot Telegram
+// Load environment variables
+config();
+
+// Configuration
 const LOG_CHANNEL_ID = "-1001966063772"; // ID Channel untuk log
 const TOKEN = "6035023034:AAG-MAmWuXVH6ZE-B2MMTR9dgf5-zZlu0bw"; // Token bot Anda
-const TELEGRAM_API = "https://api.telegram.org/bot"; // API Telegram (bisa diubah)
+const PORT = parseInt(Deno.env.get("PORT") || "3000", 10); // Port for the server
 
-// Inisialisasi konfigurasi dari file .env
-config({ export: true });
+// Initialize bot
+const bot = new Bot(TOKEN);
 
-// Membuat instance Bot Telegram
-const bot = new Bot(TOKEN, { apiUrl: TELEGRAM_API });
-
-// Membuat session map
+// Session management
 const sess = new Map();
 
-// Menentukan server DNS yang akan digunakan
-resolve.setServers(["8.8.8.8"]); // Gunakan Google DNS
+// Resolve DNS using Google DNS
+resolve.setServers(["8.8.8.8"]);
 
-// Fungsi untuk menghasilkan daftar IP dari domain
-async function generate(hostnames: string[]): Promise<string[]> {
-  let hosts: Record<string, string[]> = {};
-  let text: string[] = [];
+async function generate(hostnames: string[]): Promise<string> {
+  const hosts = {};
+  const text = [];
 
   for (const hostname of hostnames) {
-    const host = /(?:https?:\/\/)?([\w\d\.\-]+)/.exec(hostname.toLowerCase())[1];
+    const host = /(?:https?:\/\/)?([\w\d\.\-]+)/.exec(hostname.toLowerCase())?.[1];
 
-    if (host.endsWith(".onion")) continue; // Skip alamat onion
+    if (host === undefined || host.endsWith(".onion")) continue; // Skip onion addresses
 
-    if (hosts[host]) continue; // Skip jika host sudah ada
+    if (hosts[host]) continue; // Skip if host already exists
 
     try {
       hosts[host] = (await resolve(host, { all: true })).map((ip) => ip.address);
     } catch (error) {
-      // Tangani error jika domain tidak ditemukan
+      // Handle error if domain not found
       console.error(`Error resolving ${host}:`, error);
       hosts[host] = ["Domain not found"];
     }
@@ -48,71 +47,66 @@ async function generate(hostnames: string[]): Promise<string[]> {
     });
   }
 
-  return text;
+  return text.join("\n");
 }
 
-// Handler untuk route '/'
-const handler = async (req: Request): Promise<Response> => {
-  return new Response("Hello, World!");
-};
-
-// Handler untuk perintah /start
-bot.onText("/start", async (msg) => {
-  const chatId = msg.chat.id;
-  await bot.sendMessage(
-    chatId,
+bot.command("start", (ctx) => {
+  ctx.reply(
     "<pre><b>🙋‍♂️Hi! I can get IP from websites</b></pre>\n" +
       "To get IP from a website, just send me the link or domains, each separated by space.\n Hosting and modified by <b><a href='https://t.me/vano_ganzzz'><pre>🅅🄰🄽🄾 🄶🄰🄽🅉🅉🅉</pre></a></b>",
-    { reply_to_message_id: msg.message_id, reply_markup: { force_reply: true, selective: true }, parse_mode: "HTML" }
+    { reply_to_message_id: ctx.message.message_id, reply_markup: { force_reply: true, selective: true }, parse_mode: "HTML" }
   );
 });
 
-// Handler untuk perintah /about
-bot.onText("/about", async (msg) => {
-  const chatId = msg.chat.id;
-  await bot.sendMessage(
-    chatId,
-    "Hosting and modified by <b><a href='https://t.me/vano_ganzzz'>🅅🄰🄽🄾 🄶🄰🄽🅉🅉🅉</a></b>\n" +
+bot.command("about", (ctx) => {
+  ctx.reply(
+    "Hosting and modified by <b><a href='https://t.me/vano_ganzzz'>🅅🄰🄽ஓ 🄶🄰🄽🅉🅉🅉</a></b>\n" +
       "Credit: <b>Yonle</b>",
-    { reply_to_message_id: msg.message_id, reply_markup: { force_reply: true, selective: true }, parse_mode: "HTML" }
+    { reply_to_message_id: ctx.message.message_id, reply_markup: { force_reply: true, selective: true }, parse_mode: "HTML" }
   );
 });
 
-// Handler untuk pesan teks
-bot.on("message", async (msg) => {
+bot.on("message", async (ctx) => {
   if (
-    msg.chat.type !== "private" &&
-    msg.reply_to_message &&
-    sess.get(msg.from.id) != msg.reply_to_message.message_id
+    ctx.chat.type !== "private" &&
+    ctx.message.reply_to_message &&
+    sess.get(ctx.from.id) !== ctx.message.reply_to_message.message_id
   )
-    return; 
+    return;
 
   try {
-    const hosts = await generate(msg.text.split(" "));
-    const textMsg = `<b>${hosts.join("\n")}</b>`;
+    const hosts = await generate(ctx.message.text.split(" "));
+    const textMsg = `<b>${hosts}</b>`;
 
     if (textMsg.length > 4096) {
-      return await bot.sendDocument(msg.chat.id, new Blob([textMsg], { type: "text/plain" }), { reply_to_message_id: msg.message_id });
-    } 
+      return ctx.sendDocument(Buffer.from(hosts), { reply_to_message_id: ctx.message.message_id });
+    }
 
-    // Log aktivitas pengguna
-    const logText = `USER@${msg.from.username || msg.from.first_name} (${msg.from.id}) sent: ${msg.text}`;
-    await bot.sendMessage(LOG_CHANNEL_ID, logText, { parse_mode: "HTML" }).catch(console.error);
+    // Log user activity
+    const logText = `USER@${ctx.from.username || ctx.from.first_name} (${ctx.from.id}) sent: ${ctx.message.text}`;
+    bot.api.sendMessage(LOG_CHANNEL_ID, logText, { parse_mode: "HTML" }).catch(console.error);
 
-    await bot.sendMessage(msg.chat.id, textMsg, { parse_mode: "HTML", reply_to_message_id: msg.message_id });
+    ctx.reply(textMsg, { parse_mode: "HTML", reply_to_message_id: ctx.message.message_id });
   } catch (error) {
-    console.error(error); 
-    await bot.sendMessage(msg.chat.id, "An error occurred while processing your request.", { reply_to_message_id: msg.message_id });
+    console.error(error);
+    ctx.reply("An error occurred while processing your request.", { reply_to_message_id: ctx.message.message_id });
   }
 
-  sess.delete(msg.from.id);
+  sess.delete(ctx.from.id);
 });
 
-// Handler untuk error polling
 bot.on("polling_error", (error) => console.error(error));
 
-// Menjalankan bot dan mencetak username
-await bot.getMe().then(({ username }) => console.log(`Logged in as @${username}`));
+bot.api.getMe().then(({ username }) => console.log(`Logged in as @${username}`));
 
-// Menjalankan server
-serve(handler, { port: parseInt(Deno.env.get("PORT") || "3000") });
+// Start the bot and server
+bot.start();
+serve(async (req) => {
+  const body = await Deno.readAll(req.body);
+  const text = new TextDecoder().decode(body);
+  return new Response("Hello, World!", {
+    headers: { "Content-Type": "text/plain" },
+  });
+}, { port: PORT });
+
+console.log(`Server is running on port ${PORT}`);
